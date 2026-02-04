@@ -1,0 +1,81 @@
+version: '3.8'
+
+services:
+  # Service PostgreSQL
+  postgres:
+    image: postgres:15-alpine
+    container_name: docnoti-postgres
+    restart: unless-stopped
+    environment:
+      - POSTGRES_DB=docnoti
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    networks:
+      - docnoti-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Service Backend Node.js
+  backend:
+    build:
+      context: ./docnoti-backend
+      dockerfile: Dockerfile
+    container_name: docnoti-backend
+    restart: unless-stopped
+    environment:
+      - NODE_ENV=production
+      - PORT=4000
+      - DATABASE_URL=postgresql://postgres:postgres@postgres:5432/docnoti
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_NAME=docnoti
+      - DB_USER=postgres
+      - DB_PASSWORD=postgres
+      - NEXT_PUBLIC_FRONTEND_URL=http://localhost:3000
+    ports:
+      - "4000:4000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ./docnoti-backend/uploads:/app/uploads
+      - /app/node_modules
+    env_file:
+      - ./docnoti-backend/.env
+    networks:
+      - docnoti-network
+    command: npm start
+
+  frontend:
+    build:
+      context: ./Frontend
+      dockerfile: Dockerfile
+    container_name: docnoti-frontend
+    restart: unless-stopped
+    environment:
+      - NODE_ENV=production
+      - NEXT_PUBLIC_API_URL=http://localhost:4000/api
+      - NEXT_PUBLIC_BACKEND_URL=http://localhost:4000
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+    networks:
+      - docnoti-network
+    volumes:
+      - /app/.next
+      - /app/node_modules
+
+networks:
+  docnoti-network:
+    driver: bridge
+
+volumes:
+  postgres_data:
